@@ -1,0 +1,74 @@
+import cv2
+import numpy as np
+import serial
+import time
+import math
+
+ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
+time.sleep(2)
+
+L2 = 10
+L3 = 8
+
+def inverse_kinematics(x, y):
+    try:
+        base = math.degrees(math.atan2(y, x))
+        r = math.sqrt(x**2 + y**2)
+
+        D = (r**2 - L2**2 - L3**2) / (2 * L2 * L3)
+        D = max(min(D,1),-1)
+
+        elbow = math.degrees(math.acos(D))
+
+        shoulder = math.degrees(
+            math.atan2(y, x) -
+            math.atan2(L3 * math.sin(math.radians(elbow)),
+                       L2 + L3 * math.cos(math.radians(elbow)))
+        )
+
+        wrist = 180 - (shoulder + elbow)
+
+        return int(base+90), int(shoulder+90), int(elbow), int(wrist)
+
+    except:
+        return 90,90,90,90
+
+cap = cv2.VideoCapture(0)
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+
+    lower = np.array([0,120,70])
+    upper = np.array([10,255,255])
+    mask = cv2.inRange(hsv, lower, upper)
+
+    contours,_ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+    for cnt in contours:
+        if cv2.contourArea(cnt) > 1000:
+            x,y,w,h = cv2.boundingRect(cnt)
+            cx = int(x+w/2)
+            cy = int(y+h/2)
+
+            workspace_x = (cx - 320)/20
+            workspace_y = (480 - cy)/20
+
+            base, shoulder, elbow, wrist = inverse_kinematics(workspace_x, workspace_y)
+
+            gripper = 40  # closed
+
+            command = f"{base},{shoulder},{elbow},{wrist},{gripper}\n"
+            ser.write(command.encode())
+
+    cv2.imshow("5DOF Arm Vision", frame)
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
+ser.close()
