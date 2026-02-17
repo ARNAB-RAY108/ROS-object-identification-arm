@@ -1,0 +1,98 @@
+#include <ESP32Servo.h>
+
+Servo baseServo;
+Servo shoulderServo;
+Servo elbowServo;
+Servo wristServo;
+Servo gripperServo;
+
+const int basePin = 2;
+const int shoulderPin = 4;
+const int elbowPin = 5;
+const int wristPin = 18;
+const int gripperPin = 19;
+
+int currentPos[5] = {90,90,90,90,90};
+int targetPos[5]  = {90,90,90,90,90};
+
+String inputString = "";
+bool stringComplete = false;
+
+const int stepDelay = 10;      // smoothness control
+const int stepSize  = 1;       // movement granularity
+
+void setup() {
+  Serial.begin(115200);
+
+  baseServo.attach(basePin);
+  shoulderServo.attach(shoulderPin);
+  elbowServo.attach(elbowPin);
+  wristServo.attach(wristPin);
+  gripperServo.attach(gripperPin);
+
+  moveAllServos(currentPos);
+}
+
+void loop() {
+
+  if (stringComplete) {
+    parseData(inputString);
+    stringComplete = false;
+    inputString = "";
+  }
+
+  smoothMove();
+}
+
+void serialEvent() {
+  while (Serial.available()) {
+    char inChar = (char)Serial.read();
+    if (inChar == '\n') {
+      stringComplete = true;
+    } else {
+      inputString += inChar;
+    }
+  }
+}
+
+void parseData(String data) {
+  for (int i = 0; i < 5; i++) {
+    int comma = data.indexOf(',');
+    if (comma != -1) {
+      targetPos[i] = constrain(data.substring(0, comma).toInt(), 0, 180);
+      data = data.substring(comma + 1);
+    } else {
+      targetPos[i] = constrain(data.toInt(), 0, 180);
+    }
+  }
+}
+
+void smoothMove() {
+
+  bool movementNeeded = false;
+
+  for (int i = 0; i < 5; i++) {
+    if (currentPos[i] < targetPos[i]) {
+      currentPos[i] += stepSize;
+      movementNeeded = true;
+    }
+    else if (currentPos[i] > targetPos[i]) {
+      currentPos[i] -= stepSize;
+      movementNeeded = true;
+    }
+  }
+
+  moveAllServos(currentPos);
+
+  if (movementNeeded) {
+    delay(stepDelay);
+  }
+}
+
+void moveAllServos(int pos[]) {
+  baseServo.write(pos[0]);
+  shoulderServo.write(pos[1]);
+  elbowServo.write(pos[2]);
+  wristServo.write(pos[3]);
+  gripperServo.write(pos[4]);
+}
